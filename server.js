@@ -90,7 +90,7 @@ app.use('/api/sales', require('./routes/sales'));
 app.use('/api/categories', require('./routes/categories'));
 app.use('/api/customers', require('./routes/customers'));
 app.use('/api/payments', require('./routes/payments'));
-app.use('/api/reports', require('./routes/Reports'));   
+app.use('/api/reports', require('./routes/reports'));   
 app.use('/api/settings', require('./routes/settings'));
 
 // ============================================
