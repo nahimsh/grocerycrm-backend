@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 
-// Safe model getters
+// Safe S model getters
 const getSaleModel = () => {
     if (mongoose.models.Sale) return mongoose.models.Sale;
     
