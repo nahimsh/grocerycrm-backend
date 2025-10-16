@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 
-// Safe S model getters
+// Safe model getters
 const getSaleModel = () => {
     if (mongoose.models.Sale) return mongoose.models.Sale;
     
@@ -83,7 +83,7 @@ router.post('/', async (req, res) => {
         const Product = getProductModel();
         const Payment = getPaymentModel();
         
-        const { products, paymentMethod, customer } = req.body;
+        const { products, paymentMethod, customer, paidAmount: requestPaidAmount } = req.body;
 
         if (!products || !products.length) {
             return res.status(400).json({ error: 'Products required' });
@@ -117,7 +117,10 @@ router.post('/', async (req, res) => {
             console.log(`📦 Stock updated for ${product.name}: ${product.stock}`);
         }
 
-        const total = subtotal;
+        // Calculate total with GST (18%) and discount
+        const discount = req.body.discount || 0;
+        const taxAmount = subtotal * 0.18; // 18% GST
+        const total = subtotal + taxAmount - discount;
 
         // Generate invoice ID
         const count = await Sale.countDocuments();
@@ -129,32 +132,36 @@ router.post('/', async (req, res) => {
             customer: customer || { name: 'Walk-in Customer', phone: '', email: '' },
             items: saleItems,
             subtotal,
+            discount,
+            tax: taxAmount,
             total,
             paymentMethod: paymentMethod?.toLowerCase() || 'cash',
             status: 'completed'
         });
 
         await sale.save();
-        console.log(`✅ Sale created: ${invoiceId}, Total: ₹${total}`);
+        console.log(`✅ Sale created: ${invoiceId}, Subtotal: ₹${subtotal}, Tax: ₹${taxAmount}, Total: ₹${total}`);
 
-        // Create payment
-        const isPaid = ['cash', 'card', 'upi'].includes(paymentMethod?.toLowerCase());
+        // Create payment with partial payment support
+        const paidAmount = requestPaidAmount || total;
+        const outstanding = total - paidAmount;
+        const paymentStatus = paidAmount >= total ? 'paid' : (paidAmount > 0 ? 'partial' : 'pending');
         
         const payment = new Payment({
             invoiceId,
             customer: customer || { name: 'Walk-in Customer', phone: '', email: '' },
             amount: total,
-            paidAmount: isPaid ? total : 0,
+            paidAmount: paidAmount,
             method: paymentMethod?.toLowerCase() || 'cash',
-            status: isPaid ? 'paid' : 'pending',
-            paidDate: isPaid ? new Date() : null,
-            dueDate: isPaid ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            status: paymentStatus,
+            paidDate: paidAmount > 0 ? new Date() : null,
+            dueDate: paidAmount < total ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null,
             transactionId: `TXN-${Date.now()}`,
-            notes: `Auto-created from ${invoiceId}`
+            notes: `Auto-created from ${invoiceId}. Outstanding: ₹${outstanding.toFixed(2)}`
         });
 
         await payment.save();
-        console.log(`💳 Payment created: ${invoiceId}, Status: ${payment.status}`);
+        console.log(`💳 Payment created: ${invoiceId}, Total: ₹${total}, Paid: ₹${paidAmount}, Outstanding: ₹${outstanding}, Status: ${paymentStatus}`);
 
         res.status(201).json(sale);
 
